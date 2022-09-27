@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Config:etc/system_file.xsd">
+    <system>
+        <section id="payment">
+                <group id="custompayment" translate="label" sortOrder="2" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>@Pay Custom Payment</label>
+                    <field id="active" translate="label comment" sortOrder="1" type="select" showInDefault="1" showInWebsite="1" showInStore="0">
+                        <label>Enable</label>
+                        <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    </field>
+                    <field id="merchant_id" translate="label" type="text" sortOrder="2" showInDefault="1" showInWebsite="1" showInStore="0">
+                        <label>Merchant ID</label>
+                            <if_module_enabled>Pay_WithAtPay</if_module_enabled>
+                                <depends><field id="active">1</field></depends>
+                            <validate>required-entry</validate>
+                        <config_path>payment/atpay/merchant_id</config_path>
+                    </field>
+                    <field id="merchant_key" translate="label" type="text" sortOrder="3" showInDefault="1" showInWebsite="1" showInStore="0">
+                        <label>Secret Key</label>
+                                <if_module_enabled>Pay_WithAtPay</if_module_enabled>
+                                    <depends><field id="active">1</field></depends>
+                            <validate>required-entry</validate>
+                        <config_path>payment/atpay/secret_key</config_path>
+                    </field>
+                    <field id="field_id_connect" translate="label" sortOrder="4" showInDefault="4" showInWebsite="1" showInStore="0">
+                        <if_module_enabled>Pay_WithAtPay</if_module_enabled>
+                            <depends><field id="active">1</field></depends>
+                        <frontend_model>Pay\WithAtPay\Block\Adminhtml\System\Config\Button</frontend_model>
+                </field>
+                  <field id="field_id_disconnect" translate="label" sortOrder="4" showInDefault="4" showInWebsite="1" showInStore="0">
+                        <if_module_enabled>Pay_WithAtPay</if_module_enabled>
+                            <depends><field id="active">1</field></depends>
+                        <frontend_model>Pay\WithAtPay\Block\Adminhtml\System\Config\ButtonDisconnect</frontend_model>
+                </field>
+                </group>
+        </section>
+    </system>
+</config>

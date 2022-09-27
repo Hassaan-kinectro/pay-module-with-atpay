@@ -1,0 +1,13 @@
+<script type="text/javascript">  
+require(["jquery"], function ($) {
+    window.addEventListener('load',(event) => {
+    const OrderId =  document.getElementsByClassName("checkout-success")[0].childNodes[1].innerText.split(": ")[1]
+        console.log("OrderId is : ",OrderId)
+                                if (window.ReactNativeWebView) {
+                            window.ReactNativeWebView.postMessage( JSON.stringify({ OrderId, type: "magento" }));
+                        } else {
+                            console.log("Web Data", JSON.stringify({ OrderId, type: "magento" }) );
+                        }
+    });   
+});
+</script>  

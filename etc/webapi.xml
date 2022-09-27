@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Webapi:etc/webapi.xsd">
+    <route method="POST" url="/V1/new/connect/:name">
+        <service class="Pay\WithAtPay\Api\ConnectInterface" method="connect" />
+            <resources>
+                <resource ref="anonymous"/>
+            </resources>
+    </route>
+     <route method="POST" url="/V1/new/disconnect/:name">
+        <service class="Pay\WithAtPay\Api\DisconnectInterface" method="disconnect" />
+            <resources>
+                <resource ref="anonymous"/>
+            </resources>
+    </route>
+    <route method="GET" url="/V1/orderdetails/:orderid">
+        <service class="Pay\WithAtPay\Api\OrderInterface" method="getOrder" />
+            <resources>
+                <resource ref="anonymous"/>
+            </resources>
+    </route>
+    <route method="GET" url="/V1/all/products">
+        <service class="Pay\WithAtPay\Api\ProductsInterface" method="getProducts" />
+            <resources>
+                <resource ref="anonymous"/>
+            </resources>
+    </route>
+   <route url="/V1/orderstatus/:orderid" method="POST">
+       <service class="Pay\WithAtPay\Api\StatusInterface" method="setStatus" />
+       <resources>
+           <resource ref="anonymous" />
+       </resources>
+   </route>
+</routes>

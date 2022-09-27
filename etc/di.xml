@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+    <preference for="Pay\WithAtPay\Api\ConnectInterface" type="Pay\WithAtPay\Model\Connect" />
+    <preference for="Pay\WithAtPay\Api\OrderInterface" type="Pay\WithAtPay\Model\Order" />
+    <preference for="Pay\WithAtPay\Api\ProductsInterface" type="Pay\WithAtPay\Model\Products" />
+    <preference for="Pay\WithAtPay\Api\StatusInterface" type="Pay\WithAtPay\Model\Status" />
+    <preference for="Pay\WithAtPay\Api\DisconnectInterface" type="Pay\WithAtPay\Model\Disconnect" />
+</config>

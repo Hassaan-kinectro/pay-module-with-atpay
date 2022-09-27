@@ -1,0 +1,52 @@
+<input 
+    type="button" 
+    name="Disconnect_button" 
+    id="disconnect_button" 
+    value="Disconnect" 
+    style="background-color: #eb5202;
+    padding:10px 20px;
+    border: #eb5202;
+    color: #ffffff;
+    text-shadow: 1px 1px 0 rgb(0 0 0 / 25%);
+    font-size: 1.6rem;">
+
+<script type="text/javascript">  
+(function  () {    
+    require(["jquery"], function($) {
+        $(document).ready(function($) {
+            $("#disconnect_button").on("click", function(e){
+
+                $("h1").html("Store is <b>DISCONNECTED!</b>");
+              
+                var merchantId = document.getElementById("payment_us_custompayment_merchant_id").value;
+                var secretKey = document.getElementById("payment_us_custompayment_merchant_key").value;
+
+                console.log(merchantId);
+                console.log(secretKey);
+    
+                credentials = btoa(`${merchantId}:${secretKey}`);
+                console.log(credentials);
+
+                var temp = "Basic " + credentials;
+
+                console.log(temp);
+                
+                var url = `/rest/default/V1/new/disconnect/${temp}`;
+
+                fetch (url, {method: 'POST', headers: { Authorization: temp}})
+                
+                .then((response) => response.text())
+                .then((data) => console.log(data))
+                .catch((error) => {
+                                 console.log(error);
+                                 console.log(merchantId) 
+                        });
+
+                $('#disconnect_button').hide();
+                $('#connect_button').show();
+            })
+        }); 
+    });
+})();
+</script>
+
