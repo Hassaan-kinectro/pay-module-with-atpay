@@ -20,7 +20,7 @@
             </resources>
     </route>
     <route method="GET" url="/V1/all/products">
-        <service class="Pay\WithAtPay\Api\ProductsInterface" method="getProducts" />
+        <service class="AtPay\CustomPayment\Api\ProductsInterface" method="getList" />
             <resources>
                 <resource ref="anonymous"/>
             </resources>

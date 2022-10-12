@@ -8,9 +8,13 @@
  */
 -->
 <page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
-
-
     <body>
+    <referenceContainer name="content">
+           <block
+                  name="custom.cart.page"
+                  template="AtPay_CustomPayment::custom_cart_page.phtml"/>
+       </referenceContainer>
+       
         <referenceBlock name="checkout.root">
             <arguments>
                 <argument name="jsLayout" xsi:type="array">
@@ -28,7 +32,7 @@
                                                             <!-- merge payment method renders here -->
                                                             <item name="children" xsi:type="array">
                                                                 <item name="custompayment" xsi:type="array">
-                                                                    <item name="component" xsi:type="string">Pay_WithAtPay/js/view/payment/method-renderer</item>
+                                                                    <item name="component" xsi:type="string">AtPay_CustomPayment/js/view/payment/method-renderer</item>
                                                                     <item name="methods" xsi:type="array">
                                                                         <item name="custompayment" xsi:type="array">
                                                                             <item name="isBillingAddressRequired" xsi:type="boolean">true</item>

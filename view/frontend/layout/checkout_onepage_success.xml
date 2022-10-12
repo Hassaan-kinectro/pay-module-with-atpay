@@ -3,9 +3,10 @@
     <body>
         <referenceContainer name="content">
             <block 
+            class="Magento\Framework\View\Element\Template"
             name="checkout.success.tracking" 
-            template="Pay_WithAtPay::tracking.phtml" 
-            cacheable="false" />
+            template="AtPay_CustomPayment::tracking.phtml" 
+             />
         </referenceContainer>
     </body>
 </page>

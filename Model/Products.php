@@ -1,165 +1,577 @@
 <?php
 
-namespace Pay\WithAtPay\Model;
+namespace AtPay\CustomPayment\Model;
 
+use AtPay\CustomPayment\Api\ProductsInterface;
 use Psr\Log\LoggerInterface;
+use Magento\Catalog\Api\Data\ProductExtension;
+use Magento\Catalog\Api\Data\ProductInterface;
+use Magento\Catalog\Model\Product\Gallery\MimeTypeExtensionMap;
+use Magento\Catalog\Model\ResourceModel\Product\Collection;
+use Magento\Eav\Model\Entity\Attribute\Exception as AttributeException;
+use Magento\Framework\Api\Data\ImageContentInterfaceFactory;
+use Magento\Framework\Api\ImageContentValidatorInterface;
+use Magento\Framework\Api\ImageProcessorInterface;
+use Magento\Framework\Api\SearchCriteria\CollectionProcessorInterface;
+use Magento\Framework\DB\Adapter\ConnectionException;
+use Magento\Framework\DB\Adapter\DeadlockException;
+use Magento\Framework\DB\Adapter\LockWaitException;
+use Magento\Framework\EntityManager\Operation\Read\ReadExtensions;
+use Magento\Framework\Exception\CouldNotSaveException;
+use Magento\Framework\Exception\InputException;
+use Magento\Framework\Exception\LocalizedException;
+use Magento\Framework\Exception\NoSuchEntityException;
+use Magento\Framework\Exception\TemporaryState\CouldNotSaveException as TemporaryCouldNotSaveException;
+use Magento\Framework\Exception\ValidatorException;
+use Magento\Catalog\Model\Product;
 
-class Products implements \Pay\WithAtPay\Api\ProductsInterface
+/**
+ * Product Repository.
+ * @SuppressWarnings(PHPMD.CouplingBetweenObjects)
+ * @SuppressWarnings(PHPMD.TooManyFields)
+ */
+class Products implements ProductsInterface
 {
-    protected $_curl;
-    protected $logger;
     protected $_resource;
+    protected $logger;
+    /**
+     * @var \Magento\Catalog\Api\ProductCustomOptionRepositoryInterface
+     */
+    protected $optionRepository;
+
+    /**
+     * @var \Magento\Catalog\Model\ProductFactory
+     */
+    protected $productFactory;
+
+    /**
+     * @var Product[]
+     */
+    protected $instances = [];
+
+    /**
+     * @var Product[]
+     */
+    protected $instancesById = [];
+
+    /**
+     * @var \Magento\Catalog\Controller\Adminhtml\Product\Initialization\Helper
+     */
+    protected $initializationHelper;
+
+    /**
+     * @var \Magento\Catalog\Api\Data\ProductSearchResultsInterfaceFactory
+     */
+    protected $searchResultsFactory;
+
+    /**
+     * @var \Magento\Framework\Api\SearchCriteriaBuilder
+     */
+    protected $searchCriteriaBuilder;
+
+    /**
+     * @var \Magento\Framework\Api\FilterBuilder
+     */
+    protected $filterBuilder;
+
     /**
      * @var \Magento\Catalog\Model\ResourceModel\Product\CollectionFactory
      */
-    protected $productCollection;
-    /**
-     * @var \Magento\CatalogInventory\Api\StockRegistryInterface
-     */
-    protected $stockRegistry;
-    protected $selectedStore = 1;
-    /**
-     * @var \Magento\Catalog\Model\ProductRepository
-     */
-    protected $productRepository;
+    protected $collectionFactory;
 
+    /**
+     * @var \Magento\Catalog\Model\ResourceModel\Product
+     */
+    protected $resourceModel;
+
+    /**
+     * @var Product\Initialization\Helper\ProductLinks
+     */
+    protected $linkInitializer;
+
+    /**
+     * @var Product\LinkTypeProvider
+     */
+    protected $linkTypeProvider;
+
+    /**
+     * @var \Magento\Store\Model\StoreManagerInterface
+     */
+    protected $_storeManager;
+
+    /**
+     * @var \Magento\Catalog\Api\ProductAttributeRepositoryInterface
+     */
+    protected $attributeRepository;
+
+    /**
+     * @var \Magento\Catalog\Api\ProductAttributeRepositoryInterface
+     */
+    protected $metadataService;
+
+    /**
+     * @var \Magento\Framework\Api\ExtensibleDataObjectConverter
+     */
+    protected $extensibleDataObjectConverter;
+
+    /**
+     * @var \Magento\Framework\Filesystem
+     */
+    protected $fileSystem;
+
+    /**
+     * @deprecated
+     * @see \Magento\Catalog\Model\MediaGalleryProcessor
+     * @var ImageContentInterfaceFactory
+     */
+    protected $contentFactory;
+
+    /**
+     * @deprecated
+     * @see \Magento\Catalog\Model\MediaGalleryProcessor
+     * @var ImageProcessorInterface
+     */
+    protected $imageProcessor;
+
+    /**
+     * @var \Magento\Framework\Api\ExtensionAttribute\JoinProcessorInterface
+     */
+    protected $extensionAttributesJoinProcessor;
+
+    /**
+     * @var ProductRepository\MediaGalleryProcessor
+     */
+    protected $mediaGalleryProcessor;
+
+    /**
+     * @var CollectionProcessorInterface
+     */
+    private $collectionProcessor;
+
+    /**
+     * @var int
+     */
+    private $cacheLimit = 0;
+
+    /**
+     * @var \Magento\Framework\Serialize\Serializer\Json
+     */
+    private $serializer;
+
+    /**
+     * @var ReadExtensions
+     */
+    private $readExtensions;
+    /**
+     * @var \Magento\Framework\Locale\CurrencyInterface
+     */
+
+    /**
+     * ProductRepository constructor.
+     * @param \Magento\Catalog\Model\ProductFactory $productFactory
+     * @param \Magento\Catalog\Controller\Adminhtml\Product\Initialization\Helper $initializationHelper
+     * @param \Magento\Catalog\Api\Data\ProductSearchResultsInterfaceFactory $searchResultsFactory
+     * @param ResourceModel\Product\CollectionFactory $collectionFactory
+     * @param \Magento\Framework\Api\SearchCriteriaBuilder $searchCriteriaBuilder
+     * @param \Magento\Catalog\Api\ProductAttributeRepositoryInterface $attributeRepository
+     * @param ResourceModel\Product $resourceModel
+     * @param Product\Initialization\Helper\ProductLinks $linkInitializer
+     * @param Product\LinkTypeProvider $linkTypeProvider
+     * @param \Magento\Store\Model\StoreManagerInterface $storeManager
+     * @param \Magento\Framework\Api\FilterBuilder $filterBuilder
+     * @param \Magento\Catalog\Api\ProductAttributeRepositoryInterface $metadataServiceInterface
+     * @param \Magento\Framework\Api\ExtensibleDataObjectConverter $extensibleDataObjectConverter
+     * @param Product\Option\Converter $optionConverter
+     * @param \Magento\Framework\Filesystem $fileSystem
+     * @param ImageContentValidatorInterface $contentValidator
+     * @param ImageContentInterfaceFactory $contentFactory
+     * @param MimeTypeExtensionMap $mimeTypeExtensionMap
+     * @param ImageProcessorInterface $imageProcessor
+     * @param \Magento\Framework\Api\ExtensionAttribute\JoinProcessorInterface $extensionAttributesJoinProcessor
+     * @param CollectionProcessorInterface $collectionProcessor [optional]
+     * @param \Magento\Framework\Serialize\Serializer\Json|null $serializer
+     * @param int $cacheLimit [optional]
+     * @param ReadExtensions|null $readExtensions
+     * @SuppressWarnings(PHPMD.ExcessiveParameterList)
+     * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+     */
     public function __construct(
         LoggerInterface $logger,
+
         \Magento\Framework\App\ResourceConnection $resource,
-        \Magento\Catalog\Model\ResourceModel\Product\CollectionFactory $productCollection,
-        \Magento\Catalog\Model\ProductRepository $productRepository,
-        \Magento\CatalogInventory\Api\StockRegistryInterface $stockRegistry,
-        \Magento\Framework\HTTP\Client\Curl $curl,
+        \Magento\Catalog\Model\ProductFactory $productFactory,
+        \Magento\Framework\Webapi\Rest\Response $response,
+        \Magento\Catalog\Controller\Adminhtml\Product\Initialization\Helper $initializationHelper,
+        \Magento\Catalog\Api\Data\ProductSearchResultsInterfaceFactory $searchResultsFactory,
+        \Magento\Catalog\Model\ResourceModel\Product\CollectionFactory $collectionFactory,
+        \Magento\Framework\Api\SearchCriteriaBuilder $searchCriteriaBuilder,
+        \Magento\Catalog\Api\ProductAttributeRepositoryInterface $attributeRepository,
+        \Magento\Catalog\Model\ResourceModel\Product $resourceModel,
+        \Magento\Catalog\Model\Product\Initialization\Helper\ProductLinks $linkInitializer,
+        \Magento\Catalog\Model\Product\LinkTypeProvider $linkTypeProvider,
+        \Magento\Store\Model\StoreManagerInterface $storeManager,
+        \Magento\Framework\Api\FilterBuilder $filterBuilder,
+        \Magento\Catalog\Api\ProductAttributeRepositoryInterface $metadataServiceInterface,
+        \Magento\Framework\Api\ExtensibleDataObjectConverter $extensibleDataObjectConverter,
+        \Magento\Catalog\Model\Product\Option\Converter $optionConverter,
+        \Magento\Framework\Filesystem $fileSystem,
+        ImageContentValidatorInterface $contentValidator,
+        ImageContentInterfaceFactory $contentFactory,
+        MimeTypeExtensionMap $mimeTypeExtensionMap,
+        ImageProcessorInterface $imageProcessor,
+        \Magento\Framework\Api\ExtensionAttribute\JoinProcessorInterface $extensionAttributesJoinProcessor,
+        CollectionProcessorInterface $collectionProcessor = null,
+        \Magento\Framework\Serialize\Serializer\Json $serializer = null,
+        $cacheLimit = 1000,
+        ReadExtensions $readExtensions = null,
+
+        array $data = []
     ) {
         $this->logger = $logger;
-        $this->productCollection = $productCollection;
-        $this->productRepository = $productRepository;
-        $this->stockRegistry = $stockRegistry;
-        $this->curl = $curl;
-        $this->_resource= $resource;
+        $this->_resource = $resource;
+        $this->_response = $response;
+        $this->productFactory = $productFactory;
+        $this->collectionFactory = $collectionFactory;
+        $this->initializationHelper = $initializationHelper;
+        $this->searchResultsFactory = $searchResultsFactory;
+        $this->searchCriteriaBuilder = $searchCriteriaBuilder;
+        $this->resourceModel = $resourceModel;
+        $this->linkInitializer = $linkInitializer;
+        $this->linkTypeProvider = $linkTypeProvider;
+        $this->_storeManager = $storeManager;
+        $this->attributeRepository = $attributeRepository;
+        $this->filterBuilder = $filterBuilder;
+        $this->metadataService = $metadataServiceInterface;
+        $this->extensibleDataObjectConverter = $extensibleDataObjectConverter;
+        $this->fileSystem = $fileSystem;
+        $this->contentFactory = $contentFactory;
+        $this->imageProcessor = $imageProcessor;
+        $this->extensionAttributesJoinProcessor = $extensionAttributesJoinProcessor;
+        $this->collectionProcessor =
+            $collectionProcessor ?: $this->getCollectionProcessor();
+        $this->serializer =
+            $serializer ?:
+            \Magento\Framework\App\ObjectManager::getInstance()->get(
+                \Magento\Framework\Serialize\Serializer\Json::class
+            );
+        $this->cacheLimit = (int) $cacheLimit;
+        $this->readExtensions =
+            $readExtensions ?:
+            \Magento\Framework\App\ObjectManager::getInstance()->get(
+                ReadExtensions::class
+            );
     }
 
     /**
      * @inheritdoc
      */
+    public function get(
+        $sku,
+        $editMode = false,
+        $storeId = null,
+        $forceReload = false
+    ) {
+        $cacheKey = $this->getCacheKey([$editMode, $storeId]);
+        $cachedProduct = $this->getProductFromLocalCache($sku, $cacheKey);
+        if ($cachedProduct === null || $forceReload) {
+            $productId = $this->resourceModel->getIdBySku($sku);
+            if (!$productId) {
+                throw new NoSuchEntityException(
+                    __('Requested product doesn\'t exist')
+                );
+            }
 
-    public function getProducts()
+            $product = $this->getById(
+                $productId,
+                $editMode,
+                $storeId,
+                $forceReload
+            );
+
+            $this->cacheProduct($cacheKey, $product);
+            $cachedProduct = $product;
+        }
+
+        return $cachedProduct;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getById(
+        $productId,
+        $editMode = false,
+        $storeId = null,
+        $forceReload = false
+    ) {
+        $cacheKey = $this->getCacheKey([$editMode, $storeId]);
+        if (
+            !isset($this->instancesById[$productId][$cacheKey]) ||
+            $forceReload
+        ) {
+            $product = $this->productFactory->create();
+            if ($editMode) {
+                $product->setData('_edit_mode', true);
+            }
+            if ($storeId !== null) {
+                $product->setData('store_id', $storeId);
+            }
+            $product->load($productId);
+            if (!$product->getId()) {
+                throw new NoSuchEntityException(
+                    __('Requested product doesn\'t exist')
+                );
+            }
+            $this->cacheProduct($cacheKey, $product);
+        }
+
+        return $this->instancesById[$productId][$cacheKey];
+    }
+
+    /**
+     * Get key for cache
+     *
+     * @param array $data
+     * @return string
+     */
+    protected function getCacheKey($data)
     {
+        $serializeData = [];
+        foreach ($data as $key => $value) {
+            if (is_object($value)) {
+                $serializeData[$key] = $value->getId();
+            } else {
+                $serializeData[$key] = $value;
+            }
+        }
+        $serializeData = $this->serializer->serialize($serializeData);
+
+        return sha1($serializeData);
+    }
+
+    /**
+     * Add product to internal cache and truncate cache if it has more than cacheLimit elements.
+     *
+     * @param string $cacheKey
+     * @param ProductInterface $product
+     * @return void
+     */
+    private function cacheProduct($cacheKey, ProductInterface $product)
+    {
+        $_imageHelper = \Magento\Framework\App\ObjectManager::getInstance()->get(
+            'Magento\Catalog\Helper\Image'
+        );
+        $image = $_imageHelper
+            ->init($product, 'thumbnail', ['type' => 'thumbnail'])
+            ->keepAspectRatio(true)
+            ->resize('600', '600')
+            ->getUrl();
+        $product->setCustomAttribute('thumbnail', $image);
+
+        $this->instancesById[$product->getId()][$cacheKey] = $product;
+
+        if ($this->cacheLimit && count($this->instances) > $this->cacheLimit) {
+            $offset = round($this->cacheLimit / -2);
+            $this->instancesById = array_slice(
+                $this->instancesById,
+                $offset,
+                null,
+                true
+            );
+            $this->instances = array_slice(
+                $this->instances,
+                $offset,
+                null,
+                true
+            );
+        }
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getList(
+        \Magento\Framework\Api\SearchCriteriaInterface $searchCriteria
+    ) {
         try {
-            // Your Code here
+            /** @var \Magento\Catalog\Model\ResourceModel\Product\Collection $collection */
             $username = $_SERVER['PHP_AUTH_USER'];
             $password = $_SERVER['PHP_AUTH_PW'];
-            // $auth = $username.':'.$password;
-            // echo $auth;
-            if (!isset($_SERVER['PHP_AUTH_USER']))
-            {
-                echo "you need proper credentials";
-                exit;
-            }
-            else if (($_SERVER['PHP_AUTH_USER'] && ($_SERVER['PHP_AUTH_PW'])))
-            {
+            if (!isset($_SERVER['PHP_AUTH_USER'])) {
+                echo 'you need proper credentials';
+                exit();
+            } elseif ($_SERVER['PHP_AUTH_USER'] && $_SERVER['PHP_AUTH_PW']) {
                 $tableName = $this->_resource->getTableName('core_config_data');
+                $connection = $this->_resource->getConnection();
+                $path = 'payment/atpay/secret_key';
+                $select = $connection
+                    ->select()
+                    ->from(['c' => $tableName], ['value'])
+                    ->where('c.path = :path');
+                $bind = ['path' => $path];
 
-                //Initiate Connection
+                $secretKey = $connection->fetchOne($select, $bind);
 
-                    $connection = $this->_resource->getConnection();
-                    $path = 'payment/atpay/secret_key';
-                    $select = $connection->select()
-                    ->from(
-                            ['c' => $tableName],
-                            ['value']
-                        )->where(
-                            "c.path = :path"
-                        );
-                    $bind = ['path'=>$path ];
+                $path = 'payment/atpay/merchant_id';
+                $select = $connection
+                    ->select()
+                    ->from(['c' => $tableName], ['value'])
+                    ->where('c.path = :path');
+                $bind = ['path' => $path];
 
-                    $secretKey = $connection->fetchOne($select, $bind);
-                 
-                    $path = 'payment/atpay/merchant_id';
-                    $select = $connection->select()
-                    ->from(
-                            ['c' => $tableName],
-                            ['value']
-                        )->where(
-                            "c.path = :path"
-                        );
-                    $bind = ['path'=>$path ];
+                $merchantId = $connection->fetchOne($select, $bind);
 
-                    $merchantId = $connection->fetchOne($select, $bind);
-                   
-                    // $db = $merchantId."".$secretKey;
-                    // echo $db;
+                $resp = null;
 
-                    if ($username !== $merchantId || $password !== $secretKey)
-                    {
-                      echo "wrong credentials";   
-                    }
-                    else {
-            $productData = [];
-            $productCollection = $this->productCollection->create()->getAllIds();
-            foreach ($productCollection as $id) {
-                $product = $this->productRepository->getById($id);
-                $productImages = $product->getMediaGalleryImages();
-                $mainImage = $product->getData('image');
-                $images = ['main_image' => [], 'extra_images' => []];
-                if ($productImages->getSize() > 0) {
-                    foreach ($productImages as $image) {
-                        if ($mainImage == $image->getFile()) {
-                            $images['main_image'][] = $image->getUrl();
-                        } else {
-                            $images['extra_images'][] = $image->getUrl();
-                        }
-                    }
+                if ($username !== $merchantId || $password !== $secretKey) {
+                    echo 'wrong credentials';
+                    exit();
+                } else {
+                    $collection = $this->collectionFactory->create();
+                    $this->extensionAttributesJoinProcessor->process(
+                        $collection
+                    );
+
+                    $collection->addAttributeToSelect('*');
+                    $collection->joinAttribute(
+                        'status',
+                        'catalog_product/status',
+                        'entity_id',
+                        null,
+                        'inner'
+                    );
+                    $collection->joinAttribute(
+                        'visibility',
+                        'catalog_product/visibility',
+                        'entity_id',
+                        null,
+                        'inner'
+                    );
+                    $collection->addMinimalPrice(); //adding minmalprice you can change to addFinalPrice amjad fluxstore
+                    $this->collectionProcessor->process(
+                        $searchCriteria,
+                        $collection
+                    );
+                    $collection->load();
+                    $collection->addCategoryIds();
+                    $collection->addAttributeToSelect('*');
+                    $this->addExtensionAttributes($collection);
+                    $searchResult = $this->searchResultsFactory->create();
+                    $searchResult->setSearchCriteria($searchCriteria);
+                    $searchResult->setItems($collection->getItems());
+                    $searchResult->setTotalCount($collection->getSize());
+                    $resp = $collection->getItems();
                 }
-                // Product data
-                $productData[$id] = [
-                    'Name' => $product->getName(),
-                    'Url' => $product->getProductUrl(),
-                    'Price' => $product->getPrice(),
-                    'Sku' => $product->getSku(),
-                    'Qty' => $this->getInventory($product),
-                    'Stock_Status' => $this->getStockStatus($product),
-                   
-                    'Images' => $images,
-                ];
-                    }
+                $object = [];
+                foreach ($collection->getItems() as $product) {
+                    $this->cacheProduct(
+                        $this->getCacheKey([false, $product->getStoreId()]),
+                        $product
+                    );
+                    $object[] = $product->getData();
+                }
+                $obb['storeInfo']['currencySymbol'] = $this->_storeManager
+                    ->getStore()
+                    ->getCurrentCurrency()
+                    ->getCurrencySymbol();
+                $obb['storeInfo']['currencyCode'] = $this->_storeManager
+                    ->getStore()
+                    ->getCurrentCurrency()
+                    ->getCode();
+
+                $obb['code'] = 200;
+                $obb['message'] = 'success';
+                $obb['data'] = $object;
+
+                $response['res'] = $obb;
+                return $response;
+            } else {
+                echo 'you need proper credentials';
+                exit();
             }
-            $response = ['success' => '200', 'message' => 'Success', 'data' => $productData];
+        } catch (\Throwable $th) {
+            echo 'Internal Server Error';
+            exit();
         }
-        else
-            {
-                echo "you need proper credentials";
-            }
-        } catch (\Exception $e) {
-            $response = ['success' => '404', 'message' => $e->getMessage(), 'data' => []];
-            $this->logger->info($e->getMessage());
-        }
+
         return $response;
     }
 
     /**
-     * @param $productObject
-     * @return float
+     * Add extension attributes to loaded items.
+     *
+     * @param Collection $collection
+     * @return Collection
      */
-    public function getInventory($productObject)
+    private function addExtensionAttributes(Collection $collection): Collection
     {
-        $stockItem = $this->stockRegistry->getStockItem(
-            $productObject->getId(),
-            $this->selectedStore
-        );
-        return $stockItem->getQty();
+        foreach ($collection->getItems() as $item) {
+            $this->readExtensions->execute($item);
+        }
+        return $collection;
     }
 
     /**
-     * @param $productObject
-     * @return float
+     * Helper function that adds a FilterGroup to the collection.
+     *
+     * @deprecated 101.1.0
+     * @param \Magento\Framework\Api\Search\FilterGroup $filterGroup
+     * @param Collection $collection
+     * @return void
      */
-    public function getStockStatus($productObject)
+    protected function addFilterGroupToCollection(
+        \Magento\Framework\Api\Search\FilterGroup $filterGroup,
+        Collection $collection
+    ) {
+        $fields = [];
+        $categoryFilter = [];
+        foreach ($filterGroup->getFilters() as $filter) {
+            $conditionType = $filter->getConditionType() ?: 'eq';
+
+            if ($filter->getField() == 'category_id') {
+                $categoryFilter[$conditionType][] = $filter->getValue();
+                continue;
+            }
+            $fields[] = [
+                'attribute' => $filter->getField(),
+                $conditionType => $filter->getValue(),
+            ];
+        }
+
+        if ($categoryFilter) {
+            $collection->addCategoriesFilter($categoryFilter);
+        }
+
+        if ($fields) {
+            $collection->addFieldToFilter($fields);
+        }
+    }
+
+    /**
+     * Retrieve collection processor
+     *
+     * @deprecated 101.1.0
+     * @return CollectionProcessorInterface
+     */
+    private function getCollectionProcessor()
     {
-        $stockItem = $this->stockRegistry->getStockItem(
-            $productObject->getId(),
-            $this->selectedStore
-        );
-        return $stockItem->getManageStock();
+        if (!$this->collectionProcessor) {
+            $this->collectionProcessor = \Magento\Framework\App\ObjectManager::getInstance()->get(
+                'Magento\Catalog\Model\Api\SearchCriteria\ProductCollectionProcessor'
+            );
+        }
+
+        return $this->collectionProcessor;
+    }
+
+    /**
+     * Converts SKU to lower case and trims.
+     *
+     * @param string $sku
+     * @return string
+     */
+    private function prepareSku(string $sku): string
+    {
+        return mb_strtolower(trim($sku));
     }
 }
